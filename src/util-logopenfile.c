@@ -295,54 +295,13 @@ static char *SCLogFilenameFromPattern(const char *pattern)
     if (filename == NULL) {
         return NULL;
     }
-    SCLogWarning("PrePattern is %s", pattern);
     int rc = SCTimeToStringPattern(time(NULL), pattern, filename, PATH_MAX);
     int rc2 = SCRotationPattern(pattern, filename, PATH_MAX);
-    SCLogWarning("PostPattern is %s and filename is %s", pattern, filename);
     if (rc != 0 && rc2 !=0) {
         SCFree(filename);
         return NULL;
     }
     return filename;
-    // char *filename = NULL;
-    // size_t len = 0;
-
-    // /* Añadir el prefijo X. al patrón */
-    // char *new_pattern = SCMalloc(strlen(pattern) + 3);
-    // if (new_pattern == NULL) {
-    //     return NULL;
-    // }
-    
-    // strcpy(new_pattern, "X.");
-    // strcat(new_pattern, pattern);
-
-    // /* Obtener el tiempo actual en segundos */
-    // time_t t = time(NULL);
-
-    // /* Convertir el tiempo en una cadena con el formato del patrón */
-    // char time_str[64]; // Declarar una cadena de tamaño suficiente
-    // int ret = SCTimeToStringPattern(t, new_pattern, time_str, strlen(time_str)); // Pasar el tamaño de la cadena como cuarto argumento
-    // if (ret != 0) {
-    //     SCFree(new_pattern);
-    //     return NULL;
-    // }
-
-    // /* Asignar memoria para el nombre del archivo */
-    // len = strlen(time_str) + 1;
-    // filename = SCMalloc(len);
-    // if (filename == NULL) {
-    //     SCFree(new_pattern);
-    //     return NULL;
-    // }
-
-    // /* Copiar la cadena del tiempo al nombre del archivo */
-    // strlcpy(filename, time_str, len);
-
-    // /* Liberar la memoria de las cadenas auxiliares */
-    // SCFree(new_pattern);
-
-    // /* Devolver el nombre del archivo */
-    // return filename;
 }
 
 
@@ -512,10 +471,8 @@ SCConfLogOpenGeneric(ConfNode *conf,
                    "encountered");
         return -1;
     }
-    SCLogWarning(" DefaultFilename is %s", default_filename);
     // Resolve the given config
     filename = ConfNodeLookupChildValue(conf, "filename");
-    SCLogWarning(" Filename is %s", filename);
     if (filename == NULL)
         filename = default_filename;
 
@@ -526,7 +483,6 @@ SCConfLogOpenGeneric(ConfNode *conf,
     } else {
         snprintf(log_path, PATH_MAX, "%s/%s", log_dir, filename);
     }
-    SCLogWarning("Logpath is %s and filename is %s", log_path, filename);
     /* Rotate log file based on time */
     const char *rotate_int = ConfNodeLookupChildValue(conf, "rotate-interval");
     if (rotate_int != NULL) {
