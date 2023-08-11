@@ -563,62 +563,49 @@ int SCTimeToStringPattern (time_t epoch, const char *pattern, char *str, size_t 
 int SCRotationPattern (const char *pattern, char *str, size_t size)
 {
     
-    // Buscar el patrón "$rotator" en pattern
+    // Search for "$rotator" in pattern but could be any other pattern
     char *rotator = strstr(pattern, "$rotator");
     if (rotator == NULL) {
-        // Si no se encuentra el patrón, devolver 1
-        return 1;
-    } 
-    char buffer[PATH_MAX] = { 0 };
-    // Copiar el contenido de pattern hasta la posición donde se encontró el patrón en el buffer
-    strncpy(buffer, pattern, rotator - pattern);
-    
-    // Encontrar la última ocurrencia de '/' en buffer para obtener el directorio
-    char *last_slash = strrchr(buffer, '/');
-    if (last_slash == NULL) {
-        // Si no se encuentra '/', devolver 1
         return 1;
     }
-    // Crear una cadena con el directorio
+    char buffer[PATH_MAX] = { 0 };
+    strncpy(buffer, pattern, rotator - pattern);
+    
+    
+    char *last_slash = strrchr(buffer, '/');
+    if (last_slash == NULL) {
+        return 1;
+    }
     char directory[PATH_MAX] = { 0 };
     strncpy(directory, buffer, last_slash - buffer + 1);
     
-    // Abrir el directorio especificado en directory
     DIR *dir = opendir(directory);
     if (dir == NULL) {
-        // Si no se puede abrir el directorio, devolver 1
         return 1;
     }
     
-    // Buscar archivos cuyo nombre empiece como el contenido del buffer después del último '/'
     struct dirent *entry;
     int max_sequence_number = -1;
     while ((entry = readdir(dir)) != NULL) {
-        if (strncmp(entry->d_name, last_slash + 1, strlen(last_slash + 1)) == 0) {
-            // Si el nombre del archivo empieza con el contenido del buffer después del último '/', extraer los siguientes 4 dígitos
+        if (strncmp(entry->d_name, last_slash + 1, strlen(last_slash + 1)) == 0 ) { //looking for already inexed files
+
             char sequence_number_str[5] = { 0 };
+            
             strncpy(sequence_number_str, entry->d_name + strlen(last_slash + 1), 4);
             int sequence_number = atoi(sequence_number_str);
-            if (sequence_number > max_sequence_number) {
+            if (sequence_number > max_sequence_number) {  //should do something when 9999 is reached or maybe just add more digits?
                 max_sequence_number = sequence_number;
             }
         }
     }
-    
-    // Cerrar el directorio
     closedir(dir);
     
-    // Calcular el número de secuencia a usar
-    int sequence_number_to_use;
-    if (max_sequence_number == -1) {
-        sequence_number_to_use = 0;
-    } else {
-        sequence_number_to_use = max_sequence_number + 1;
-    }
     
-    // Reemplazar el patrón "$rotator" con el número de secuencia en str
+    int sequence_number_to_use;
+    sequence_number_to_use = max_sequence_number + 1;
+ 
+    
     sprintf(str, "%s%04d%s", buffer, sequence_number_to_use, rotator + strlen("$rotator"));
-    //strlcpy(str, buffer, size);
 
     return 0;
 }
