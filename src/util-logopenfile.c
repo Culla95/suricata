@@ -27,8 +27,8 @@
 #include "suricata-common.h" /* errno.h, string.h, etc. */
 #include "util-logopenfile.h"
 #include "suricata.h"
-#include "conf.h"            /* ConfNode, etc. */
-#include "output.h"          /* DEFAULT_LOG_* */
+#include "conf.h"   /* ConfNode, etc. */
+#include "output.h" /* DEFAULT_LOG_* */
 #include "util-byte.h"
 #include "util-conf.h"
 #include "util-path.h"
@@ -60,17 +60,17 @@ static SC_ATOMIC_DECL_AND_INIT_WITH_VAL(uint32_t, eve_file_id, 1);
  *  \retval FILE* on success (fdopen'd wrapper of underlying socket)
  *  \retval NULL on error
  */
-static FILE *
-SCLogOpenUnixSocketFp(const char *path, int sock_type, int log_err)
+static FILE *SCLogOpenUnixSocketFp(const char *path, int sock_type, int log_err)
 {
     struct sockaddr_un saun;
     int s = -1;
-    FILE * ret = NULL;
+    FILE *ret = NULL;
 
     memset(&saun, 0x00, sizeof(saun));
 
     s = socket(PF_UNIX, sock_type, 0);
-    if (s < 0) goto err;
+    if (s < 0)
+        goto err;
 
     saun.sun_family = AF_UNIX;
     strlcpy(saun.sun_path, path, sizeof(saun.sun_path));
@@ -115,9 +115,8 @@ static int SCLogUnixSocketReconnect(LogFileCtx *log_ctx)
     uint64_t now;
     gettimeofday(&tv, NULL);
     now = (uint64_t)tv.tv_sec * 1000;
-    now += tv.tv_usec / 1000;           /* msec resolution */
-    if (log_ctx->reconn_timer != 0 &&
-            (now - log_ctx->reconn_timer) < LOGFILE_RECONN_MIN_TIME) {
+    now += tv.tv_usec / 1000; /* msec resolution */
+    if (log_ctx->reconn_timer != 0 && (now - log_ctx->reconn_timer) < LOGFILE_RECONN_MIN_TIME) {
         /* Don't bother to try reconnecting too often. */
         return 0;
     }
@@ -134,8 +133,7 @@ static int SCLogUnixSocketReconnect(LogFileCtx *log_ctx)
     return log_ctx->fp ? 1 : 0;
 }
 
-static int SCLogFileWriteSocket(const char *buffer, int buffer_len,
-        LogFileCtx *ctx)
+static int SCLogFileWriteSocket(const char *buffer, int buffer_len, LogFileCtx *ctx)
 {
     int tries = 0;
     int ret = 0;
@@ -161,7 +159,7 @@ tryagain:
                     goto tryagain;
                 }
                 SCLogDebug("Too many interrupted system calls, "
-                        "dropping event.");
+                           "dropping event.");
             } else {
                 /* Some other error. Assume badness and reopen. */
                 SCLogDebug("Send failed: %s", strerror(errno));
@@ -186,7 +184,6 @@ tryagain:
 static inline void OutputWriteLock(pthread_mutex_t *m)
 {
     SCMutexLock(m);
-
 }
 
 /**
@@ -284,6 +281,55 @@ static int SCLogFileWrite(const char *buffer, int buffer_len, LogFileCtx *log_ct
     return ret;
 }
 
+int SCIndexPattern(const char *pattern, char *str, size_t size)
+{
+
+    // Search for "$index" in pattern but could be any other pattern
+    char *index = strstr(pattern, "$index");
+    if (index == NULL) {
+        return 1;
+    }
+    char buffer[PATH_MAX] = { 0 };
+    strncpy(buffer, pattern, index - pattern);
+
+    char *last_slash = strrchr(buffer, '/');
+    if (last_slash == NULL) {
+        return 1;
+    }
+    char directory[PATH_MAX] = { 0 };
+    strncpy(directory, buffer, last_slash - buffer + 1);
+
+    DIR *dir = opendir(directory);
+    if (dir == NULL) {
+        return 1;
+    }
+
+    struct dirent *entry;
+    int max_sequence_number = -1;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, last_slash + 1, strlen(last_slash + 1)) ==
+                0) { // looking for already indexed files
+
+            char sequence_number_str[5] = { 0 };
+
+            strncpy(sequence_number_str, entry->d_name + strlen(last_slash + 1), 4);
+            int sequence_number = atoi(sequence_number_str);
+            if (sequence_number > max_sequence_number) { // should do something when 9999 is reached
+                                                         // or maybe just add more digits?
+                max_sequence_number = sequence_number;
+            }
+        }
+    }
+    closedir(dir);
+
+    int sequence_number_to_use;
+    sequence_number_to_use = max_sequence_number + 1;
+
+    sprintf(str, "%s%04d%s", buffer, sequence_number_to_use, index + strlen("$index"));
+
+    return 0;
+}
+
 /** \brief generate filename based on pattern
  *  \param pattern pattern to use
  *  \retval char* on success
@@ -296,14 +342,13 @@ static char *SCLogFilenameFromPattern(const char *pattern)
         return NULL;
     }
     int rc = SCTimeToStringPattern(time(NULL), pattern, filename, PATH_MAX);
-    int rc2 = SCRotationPattern(pattern, filename, PATH_MAX);
-    if (rc != 0 && rc2 !=0) {
+    int rc2 = SCIndexPattern(pattern, filename, PATH_MAX);
+    if (rc != 0 && rc2 != 0) {
         SCFree(filename);
         return NULL;
     }
     return filename;
 }
-
 
 static void SCLogFileCloseNoLock(LogFileCtx *log_ctx)
 {
@@ -359,38 +404,38 @@ static void ThreadLogFileHashFreeFunc(void *data)
 
 bool SCLogOpenThreadedFile(const char *log_path, const char *append, LogFileCtx *parent_ctx)
 {
-        parent_ctx->threads = SCCalloc(1, sizeof(LogThreadedFileCtx));
-        if (!parent_ctx->threads) {
-            SCLogError("Unable to allocate threads container");
-            return false;
-        }
+    parent_ctx->threads = SCCalloc(1, sizeof(LogThreadedFileCtx));
+    if (!parent_ctx->threads) {
+        SCLogError("Unable to allocate threads container");
+        return false;
+    }
 
-        parent_ctx->threads->ht = HashTableInit(255, ThreadLogFileHashFunc,
-                ThreadLogFileHashCompareFunc, ThreadLogFileHashFreeFunc);
-        if (!parent_ctx->threads->ht) {
-            FatalError("Unable to initialize thread/entry hash table");
-        }
+    parent_ctx->threads->ht = HashTableInit(
+            255, ThreadLogFileHashFunc, ThreadLogFileHashCompareFunc, ThreadLogFileHashFreeFunc);
+    if (!parent_ctx->threads->ht) {
+        FatalError("Unable to initialize thread/entry hash table");
+    }
 
-        parent_ctx->threads->append = SCStrdup(append == NULL ? DEFAULT_LOG_MODE_APPEND : append);
-        if (!parent_ctx->threads->append) {
-            SCLogError("Unable to allocate threads append setting");
-            goto error_exit;
-        }
+    parent_ctx->threads->append = SCStrdup(append == NULL ? DEFAULT_LOG_MODE_APPEND : append);
+    if (!parent_ctx->threads->append) {
+        SCLogError("Unable to allocate threads append setting");
+        goto error_exit;
+    }
 
-        SCMutexInit(&parent_ctx->threads->mutex, NULL);
-        return true;
+    SCMutexInit(&parent_ctx->threads->mutex, NULL);
+    return true;
 
 error_exit:
 
-        if (parent_ctx->threads->append) {
-            SCFree(parent_ctx->threads->append);
-        }
-        if (parent_ctx->threads->ht) {
-            HashTableFree(parent_ctx->threads->ht);
-        }
-        SCFree(parent_ctx->threads);
-        parent_ctx->threads = NULL;
-        return false;
+    if (parent_ctx->threads->append) {
+        SCFree(parent_ctx->threads->append);
+    }
+    if (parent_ctx->threads->ht) {
+        HashTableFree(parent_ctx->threads->ht);
+    }
+    SCFree(parent_ctx->threads);
+    parent_ctx->threads = NULL;
+    return false;
 }
 
 /** \brief open the indicated file, logging any errors
@@ -400,8 +445,7 @@ error_exit:
  *  \retval FILE* on success
  *  \retval NULL on error
  */
-static FILE *
-SCLogOpenFileFp(const char *path, const char *append_setting, uint32_t mode)
+static FILE *SCLogOpenFileFp(const char *path, const char *append_setting, uint32_t mode)
 {
     FILE *ret = NULL;
 
@@ -449,11 +493,8 @@ SCLogOpenFileFp(const char *path, const char *append_setting, uint32_t mode)
  *  \retval 0 on success
  *  \retval -1 on error
  */
-int
-SCConfLogOpenGeneric(ConfNode *conf,
-                     LogFileCtx *log_ctx,
-                     const char *default_filename,
-                     int rotate)
+int SCConfLogOpenGeneric(
+        ConfNode *conf, LogFileCtx *log_ctx, const char *default_filename, int rotate)
 {
     char log_path[PATH_MAX];
     const char *log_dir;
@@ -526,14 +567,13 @@ SCConfLogOpenGeneric(ConfNode *conf,
         append = DEFAULT_LOG_MODE_APPEND;
 
     /* JSON flags */
-    log_ctx->json_flags = JSON_PRESERVE_ORDER|JSON_COMPACT|
-                          JSON_ENSURE_ASCII|JSON_ESCAPE_SLASH;
+    log_ctx->json_flags =
+            JSON_PRESERVE_ORDER | JSON_COMPACT | JSON_ENSURE_ASCII | JSON_ESCAPE_SLASH;
 
     ConfNode *json_flags = ConfNodeLookupChild(conf, "json");
 
     if (json_flags != 0) {
-        const char *preserve_order = ConfNodeLookupChildValue(json_flags,
-                                                              "preserve-order");
+        const char *preserve_order = ConfNodeLookupChildValue(json_flags, "preserve-order");
         if (preserve_order != NULL && ConfValIsFalse(preserve_order))
             log_ctx->json_flags &= ~(JSON_PRESERVE_ORDER);
 
@@ -541,13 +581,11 @@ SCConfLogOpenGeneric(ConfNode *conf,
         if (compact != NULL && ConfValIsFalse(compact))
             log_ctx->json_flags &= ~(JSON_COMPACT);
 
-        const char *ensure_ascii = ConfNodeLookupChildValue(json_flags,
-                                                            "ensure-ascii");
+        const char *ensure_ascii = ConfNodeLookupChildValue(json_flags, "ensure-ascii");
         if (ensure_ascii != NULL && ConfValIsFalse(ensure_ascii))
             log_ctx->json_flags &= ~(JSON_ENSURE_ASCII);
 
-        const char *escape_slash = ConfNodeLookupChildValue(json_flags,
-                                                            "escape-slash");
+        const char *escape_slash = ConfNodeLookupChildValue(json_flags, "escape-slash");
         if (escape_slash != NULL && ConfValIsFalse(escape_slash))
             log_ctx->json_flags &= ~(JSON_ESCAPE_SLASH);
     }
@@ -612,8 +650,7 @@ SCConfLogOpenGeneric(ConfNode *conf,
         log_ctx->send_flags |= MSG_DONTWAIT;
     }
 #endif
-    SCLogInfo("%s output device (%s) initialized: %s", conf->name, filetype,
-              filename);
+    SCLogInfo("%s output device (%s) initialized: %s", conf->name, filetype, filename);
 
     return 0;
 }
@@ -657,8 +694,8 @@ int SCConfLogReopen(LogFileCtx *log_ctx)
  *  */
 LogFileCtx *LogFileNewCtx(void)
 {
-    LogFileCtx* lf_ctx;
-    lf_ctx = (LogFileCtx*)SCCalloc(1, sizeof(LogFileCtx));
+    LogFileCtx *lf_ctx;
+    lf_ctx = (LogFileCtx *)SCCalloc(1, sizeof(LogFileCtx));
 
     if (lf_ctx == NULL)
         return NULL;
@@ -890,7 +927,7 @@ int LogFileFreeCtx(LogFileCtx *lf_ctx)
         lf_ctx->prefix_len = 0;
     }
 
-    if(lf_ctx->filename != NULL)
+    if (lf_ctx->filename != NULL)
         SCFree(lf_ctx->filename);
 
     if (lf_ctx->sensor_name)
@@ -912,8 +949,7 @@ int LogFileWrite(LogFileCtx *file_ctx, MemBuffer *buffer)
             file_ctx->type == LOGFILE_TYPE_UNIX_STREAM) {
         /* append \n for files only */
         MemBufferWriteString(buffer, "\n");
-        file_ctx->Write((const char *)MEMBUFFER_BUFFER(buffer),
-                        MEMBUFFER_OFFSET(buffer), file_ctx);
+        file_ctx->Write((const char *)MEMBUFFER_BUFFER(buffer), MEMBUFFER_OFFSET(buffer), file_ctx);
     } else if (file_ctx->type == LOGFILE_TYPE_PLUGIN) {
         file_ctx->plugin.plugin->Write((const char *)MEMBUFFER_BUFFER(buffer),
                 MEMBUFFER_OFFSET(buffer), file_ctx->plugin.init_data, file_ctx->plugin.thread_data);
@@ -921,8 +957,8 @@ int LogFileWrite(LogFileCtx *file_ctx, MemBuffer *buffer)
 #ifdef HAVE_LIBHIREDIS
     else if (file_ctx->type == LOGFILE_TYPE_REDIS) {
         SCMutexLock(&file_ctx->fp_mutex);
-        LogFileWriteRedis(file_ctx, (const char *)MEMBUFFER_BUFFER(buffer),
-                MEMBUFFER_OFFSET(buffer));
+        LogFileWriteRedis(
+                file_ctx, (const char *)MEMBUFFER_BUFFER(buffer), MEMBUFFER_OFFSET(buffer));
         SCMutexUnlock(&file_ctx->fp_mutex);
     }
 #endif
